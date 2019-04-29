@@ -1,5 +1,7 @@
 # terraform-vm
 
+This tool create and delete machine with terraform on vSphere infrastructure. 
+
 ## Requirements
 
  - python3
@@ -84,3 +86,9 @@ Destroy a VM
 ```bash
 python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 --ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action destroy
 ```
+
+## TODOLIST
+
+ - Add 'update' action
+ - Manage other infrastructure providers
+ 
