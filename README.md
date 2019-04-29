@@ -1,4 +1,4 @@
-# provision-vm-jenkins
+# terraform-vm
 
 ## Requirements
 
@@ -7,7 +7,7 @@
 
 ## Installation
 
-pip install tf-builder
+pip install terraform-vm
 
 ## Develop
 
