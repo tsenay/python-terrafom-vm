@@ -1,0 +1,294 @@
+#!/usr/bin/env python
+
+from terrascript import Terrascript, provider
+from terrascript.vsphere.r import vsphere_virtual_machine
+from terrascript.vsphere.d import vsphere_datastore
+from terrascript.vsphere.d import vsphere_datacenter
+from terrascript.vsphere.d import vsphere_resource_pool
+from terrascript.vsphere.d import vsphere_network
+from terrascript.vsphere.d import vsphere_virtual_machine \
+    as data_vsphere_virtual_machine
+
+from python_terraform import *
+
+import argparse
+import socket
+from os import environ
+import subprocess
+import logging
+
+
+def createTfData(properties):
+    ts = Terrascript()
+
+    esxi_provider = provider(
+        "vsphere",
+        user=properties['esxuser'],
+        password=environ["ESXPASS"],
+        vsphere_server=properties['esxhost'],
+        allow_unverified_ssl=True)
+
+    esx_datacenter = vsphere_datacenter(
+        "dc",
+        name=properties['datacenter'])
+
+    esx_datastore = vsphere_datastore(
+        "ds",
+        name=properties['datastore'],
+        datacenter_id=esx_datacenter.id)
+
+    esx_resource_pool = vsphere_resource_pool(
+        "pool",
+        name=properties['pool'],
+        datacenter_id=esx_datacenter.id)
+
+    esx_template = data_vsphere_virtual_machine(
+        "template",
+        name=properties['template'],
+        datacenter_id=esx_datacenter.id)
+
+    # Handle disks
+    disks = []
+    if properties['disk'] is not None:
+        for idx, size in enumerate(properties['disk']):
+            disks.append({"label": "disk{}".format(idx+1), "size": size})
+
+    customize = {"linux_options": {
+            "host_name": properties['name'],
+            "domain": properties['domain'],
+            "time_zone": properties['timezon']}
+    }
+
+    # Handle networks
+    vsphere_networks = []
+    vm_interfaces = []
+    cust_interfaces = []
+    if properties['nic'] is not None:
+        customize["network_interface"] = cust_interfaces
+        customize["ipv4_gateway"] = properties['gateway']
+        customize["dns_server_list"] = properties['dns']
+        
+        for idx, nic in enumerate(properties['nic']):
+            vnet = vsphere_network(
+                nic,
+                name=nic,
+                datacenter_id=esx_datacenter.id)
+
+            vsphere_networks.append(vnet)
+            vm_interfaces.append({"network_id": vnet.id})
+            iface = {"ipv4_address": properties['ip'][idx],
+                     "ipv4_netmask": properties['cidr'][idx]}
+            cust_interfaces.append(iface)
+
+    clone = {"template_uuid": esx_template.id,
+             "linked_clone": False,
+             "customize": customize}
+
+    vm = vsphere_virtual_machine(
+        'vm',
+        name=properties['name'],
+        resource_pool_id=esx_resource_pool.id,
+        datastore_id=esx_datastore.id,
+        guest_id=properties['guestid'],
+        folder=properties['folder'],
+        num_cpus=properties['cpu'],
+        memory=properties['ram'],
+        network_interface=vm_interfaces,
+        disk=disks,
+        clone=clone)
+
+    ts.add(esxi_provider)
+    ts.add(esx_datacenter)
+    ts.add(esx_datastore)
+    ts.add(esx_template)
+    ts.add(esx_resource_pool)
+    for net in vsphere_networks:
+        ts.add(net)
+    ts.add(vm)
+    return ts.dump()
+
+
+def writeDataToFile(filename, data):
+    file = open(filename, mode='w')
+    file.writelines(data)
+    file.close()
+
+
+def isVmExistsInStateFile(tfstateFile, vmName):
+    try:
+        fd = open(tfstateFile, 'r')
+        jsonObject = json.load(fd)
+        fd.close()
+    except FileNotFoundError:
+        return False
+    try:
+        if jsonObject['modules'][0]['resources']['vsphere_virtual_machine.vm']['primary']['attributes']['name'] == vmName:
+            return True
+    except KeyError:
+        pass
+    return False
+
+####################
+# Main program
+####################
+if __name__ == '__main__':
+    formatter = logging.Formatter(
+        '[%(asctime)s] [%(name)-12s] [%(levelname)-8s] %(message)s')
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger(__name__)
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
+    logger.info("Start processing")
+
+    args = argparse.ArgumentParser(
+        prog='python-terrafom-vm',
+        description="Manage vSphere Virtual Machines",
+        epilog="Environment variable ESXPASS is required to connect to vSphere\n/!\ When you want to destroy a VM, tfstate file is not required")
+    args.add_argument('--action', choices=['create', 'destroy'],
+                      required=True,
+                      help='Action to Execute against vSphere')
+    args.add_argument('--datacenter', action='store',
+                      required=True,
+                      help='ESXi Datacenter')
+    args.add_argument('--datastore', action='store',
+                      required=True,
+                      help='ESXi Datastore')
+    args.add_argument('--pool', action='store',
+                      required=True,
+                      help='ESXi Resource Pool')
+    args.add_argument('--folder', action='store',
+                      required=True,
+                      help='ESXi VM Folder')
+    args.add_argument('--template', action='store',
+                      required=True,
+                      help='Template Name')
+    args.add_argument('--guestid', action='store',
+                      required=True,
+                      help='Guest ID')
+    args.add_argument('--name', action='store',
+                      required=True,
+                      help='Virtual Machine Name')
+    args.add_argument('--nic', action='append',
+                      help='Network Interface. Repeat option for several NICs')
+    args.add_argument('--ip', action='append',
+                      help='NIC IP address. Repeat option for several NICs')
+    args.add_argument('--cidr', action='append',
+                      help='NIC CIDR. Repeat option for several NICs')
+    args.add_argument('--gateway', action='store',
+                      help='Default gateway')
+    args.add_argument('--cpu', action='store',
+                      required=True,
+                      help='CPUs')
+    args.add_argument('--ram', action='store',
+                      required=True,
+                      help='Memory')
+    args.add_argument('--disk', action='append',
+                      help='Additionnal disk in GB. Repeat option for several disks')
+    args.add_argument('--dns', action='append',
+                      help='DNS server')
+    args.add_argument('--esxhost', action='store',
+                      required=True,
+                      help='ESXi host')
+    args.add_argument('--esxuser', action='store',
+                      required=True,
+                      help='ESXi Username')
+    args.add_argument('--domain', action='store',
+                      required=True,
+                      help='DNS domain')
+    args.add_argument('--timezone', action='store',
+                      required=True,
+                      help='TimeZone')
+    args.add_argument('-debug', action='store_true',
+                      help='Verbose Output')
+
+    arguments = vars(args.parse_args())
+    
+    if 'debug' in arguments:
+        logger.setLevel(logging.DEBUG)
+        logger.debug('Switch to DEBUG output')
+
+    if arguments['nic'] is not None:
+        if (len(arguments['nic']) != len(arguments['ip'])):
+            logger.critical("The number of --ip must be equal to --nic")
+            raise Exception
+
+        if (len(arguments['nic']) != len(arguments['cidr'])):
+            logger.critical("The number of --cidr must be equal to --nic")
+            raise Exception
+
+        for addr in arguments['ip']:
+            try:
+                socket.inet_aton(addr)
+                # legal
+            except socket.error:
+                logger.critical("{} is not a valid IP address".format(addr))
+                raise Exception
+
+    if not ("ESXPASS" in environ):
+        logger.critical("Environment variable ESXPASS must be set")
+        exit(1)
+
+    jsonFileName = "{}.tf.json".format(arguments['name'])
+
+    logger.info("Create Terraform template")
+    writeDataToFile(jsonFileName,
+                    createTfData(arguments))
+
+    tf = Terraform()
+
+    if arguments['action'] == 'create':
+        planFile = "{}.plan".format(arguments['name'])
+
+        logger.info("Create Terraform plan")
+        return_code, stdout, stderr = tf.plan(out=planFile,
+                                              input=False,
+                                              no_color=IsFlagged)
+        
+        logger.debug(stdout)
+
+        if return_code == 0:
+            logger.warning("Nothing to create. Exit")
+            exit(0)
+
+        if return_code != 2:
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
+            raise Exception
+
+        logger.info("Apply terraform plan")
+        return_code, stdout, stderr = tf.apply(planFile,
+                                               input=False,
+                                               no_color=IsFlagged)
+        logger.debug(stdout)
+
+        if return_code != 0:
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
+            raise Exception
+
+    elif arguments['action'] == 'destroy':
+        logger.info("Import Ressource from vSphere")
+        if not isVmExistsInStateFile("terraform.tfstate", arguments['name']):
+            tf.import_cmd(
+                "vsphere_virtual_machine.vm",
+                "/{}/vm/{}/{}".format(
+                    arguments['datacenter'],
+                    arguments['folder'],
+                    arguments['name']))
+
+        logger.info("Destroy terraform Resource")
+        return_code, stdout, stderr = tf.destroy(input=False)
+        logger.debug(stdout)
+
+        if return_code == 0:
+            logger.warning("Nothing to destroy. Exit")
+            exit(0)
+
+        if return_code != 2:
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
+            raise Exception
+
+    logger.info("Done!")
