@@ -9,6 +9,15 @@
 
 pip install tf-builder
 
+## Develop
+
+```bash
+git clone https://github.com/tsenay/python-terraform-vm.git
+cd python-terraform-vm
+python -m venv venv
+source ./venv/bin/activate
+python -m pip install -r requirements.txt
+```
 
 ## Usage
 
@@ -24,8 +33,8 @@ Required password variable
 Usage
 
 ```bash
-$ tf-builder --help
-usage: tf-builder [-h] --action {create,destroy} --datacenter DATACENTER
+$ python-terraform-vm --help
+usage: python-terraform-vm [-h] --action {create,destroy} --datacenter DATACENTER
                   --datastore DATASTORE --pool POOL --folder FOLDER --template
                   TEMPLATE --guestid GUESTID --name NAME [--nic NIC] [--ip IP]
                   [--cidr CIDR] [--gateway GATEWAY] --cpu CPU --ram RAM
@@ -68,10 +77,10 @@ want to destroy a VM, tfstate file is not required
 
 Create a VM
 ```bash
-python-terrafom-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --nic DvP_Nmae --ip 10.0.123.123 --cidr 24 --gateway 10.0.123.1 --cpu 1 --ram 1024 --disk 10 --dns 10.0.123.50 --dns 10.0.123.100 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action create
+python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --nic DvP_Nmae --ip 10.0.123.123 --cidr 24 --gateway 10.0.123.1 --cpu 1 --ram 1024 --disk 10 --dns 10.0.123.50 --dns 10.0.123.100 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action create
 ```
 
 Destroy a VM
 ```bash
-python-terrafom-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 --ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action destroy
+python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 --ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action destroy
 ```
