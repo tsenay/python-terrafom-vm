@@ -142,7 +142,7 @@ if __name__ == '__main__':
     logger.setLevel(logging.INFO)
 
     args = argparse.ArgumentParser(
-        prog='python-terraform-vm',
+        prog='terraform-vm',
         description="Manage vSphere Virtual Machines",
         epilog="Environment variable ESXPASS is required to connect to vSphere\n/!\ When you want to destroy a VM, tfstate file is not required")
     args.add_argument('--action', choices=['create', 'destroy'],
@@ -236,6 +236,9 @@ if __name__ == '__main__':
                     createTfData(arguments))
 
     tf = Terraform()
+
+    return_code, stdout, stderr = tf.init(input=False,
+                                          no_color=IsFlagged)
 
     if arguments['action'] == 'create':
         planFile = "{}.plan".format(arguments['name'])
