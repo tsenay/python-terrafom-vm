@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='terraform-vm',
-    version='0.1',
+    version='0.2',
     scripts=['terraform-vm'],
     author="Thomas Senay",
     author_email="tsenay.consulting@icloud.com",
@@ -16,7 +16,7 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
-        "License :: GNU GENERAL PUBLIC LICENSE",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
     install_requires=[

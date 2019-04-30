@@ -16,9 +16,6 @@ pip install terraform-vm
 ```bash
 git clone https://github.com/tsenay/python-terraform-vm.git
 cd python-terraform-vm
-python -m venv venv
-source ./venv/bin/activate
-python -m pip install -r requirements.txt
 ```
 
 ## Usage
@@ -35,13 +32,15 @@ Required password variable
 Usage
 
 ```bash
-$ python-terraform-vm --help
-usage: python-terraform-vm [-h] --action {create,destroy} --datacenter DATACENTER
-                  --datastore DATASTORE --pool POOL --folder FOLDER --template
-                  TEMPLATE --guestid GUESTID --name NAME [--nic NIC] [--ip IP]
-                  [--cidr CIDR] [--gateway GATEWAY] --cpu CPU --ram RAM
-                  [--disk DISK] [--dns DNS] --esxhost ESXHOST --esxuser
-                  ESXUSER [-debug]
+$ terraform-vm --help
+usage: python-terraform-vm [-h] --action {create,destroy} --datacenter
+                           DATACENTER --datastore DATASTORE --pool POOL
+                           --folder FOLDER --template TEMPLATE --guestid
+                           GUESTID --name NAME [--nic NIC] [--ip IP]
+                           [--cidr CIDR] [--gateway GATEWAY] --cpu CPU --ram
+                           RAM [--disk DISK] [--dns DNS] --esxhost ESXHOST
+                           --esxuser ESXUSER --domain DOMAIN --timezone
+                           TIMEZONE [-debug]
 
 Manage vSphere Virtual Machines
 
@@ -69,6 +68,8 @@ optional arguments:
   --dns DNS             DNS server
   --esxhost ESXHOST     ESXi host
   --esxuser ESXUSER     ESXi Username
+  --domain DOMAIN       DNS domain
+  --timezone TIMEZONE   TimeZone
   -debug                Verbose Output
 
 Environment variable ESXPASS is required to connect to vSphere /!\ When you
@@ -87,8 +88,29 @@ Destroy a VM
 python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 --ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action destroy
 ```
 
+## Development
+
+Virtualenv and dependencies
+
+```bash
+python -m venv venv
+source ./venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Build wheel package
+
+```bash
+python setup.py  bdist_wheel
+```
+
+Upload on PyPi
+
+```bash
+twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+```
+
 ## TODOLIST
 
  - Add 'update' action
  - Manage other infrastructure providers
- 

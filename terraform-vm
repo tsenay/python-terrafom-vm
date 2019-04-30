@@ -18,6 +18,24 @@ import subprocess
 import logging
 
 
+from os.path import exists, join, normpath
+from os import pathsep
+
+
+def search_file(filename, search_path):
+   """Given a search path, find file
+   """
+   file_found = 0
+   paths = str.split(search_path, pathsep)
+   for path in paths:
+      if exists(join(path, filename)):
+          file_found = 1
+          break
+   if file_found:
+      return normpath(join(path, filename))
+   else:
+      return None
+
 def createTfData(properties):
     ts = Terrascript()
 
@@ -56,7 +74,7 @@ def createTfData(properties):
     customize = {"linux_options": {
             "host_name": properties['name'],
             "domain": properties['domain'],
-            "time_zone": properties['timezon']}
+            "time_zone": properties['timezone']}
     }
 
     # Handle networks
@@ -204,9 +222,17 @@ if __name__ == '__main__':
 
     arguments = vars(args.parse_args())
     
-    if 'debug' in arguments:
+    if arguments['debug']:
         logger.setLevel(logging.DEBUG)
         logger.debug('Switch to DEBUG output')
+
+
+    find_file = search_file('terraform',environ['PATH'])
+    if find_file:
+        logger.info("terraform found at {}".format(find_file))
+    else:
+        logger.error("terraform binary not found")
+        exit(1)
 
     if arguments['nic'] is not None:
         if (len(arguments['nic']) != len(arguments['ip'])):
@@ -284,13 +310,9 @@ if __name__ == '__main__':
         return_code, stdout, stderr = tf.destroy(input=False)
         logger.debug(stdout)
 
-        if return_code == 0:
-            logger.warning("Nothing to destroy. Exit")
-            exit(0)
-
         if return_code != 2:
             logger.error("Return Code: {}".format(return_code))
             logger.error(stderr)
             raise Exception
 
-    logger.info("Done!")
+    logger.info("End.")
