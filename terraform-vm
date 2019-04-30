@@ -19,139 +19,416 @@ import logging
 
 
 from os.path import exists, join, normpath
-from os import pathsep
+from os import pathsep, linesep
+
+class TerrascriptVSphereVM:
+    def __init__(self, name, guestid, cpu, memory, folder = ''):
+        self.ts = Terrascript()
+        self.name = name
+        self.guestid = guestid
+        self.cpu = cpu
+        self.memory = memory
+        self.folder = folder
+        self.provider = None
+        self.datacenter = None
+        self.datastore = None
+        self.template = None
+        self.disks = []
+        self.networks = []
+        self.interfaces = []
+        self.iface_customization = []
+
+    
+    def setProvider(self, host, username , password):
+        self.provider = provider(
+            "vsphere",
+            user=username,
+            password=password,
+            vsphere_server=host,
+            allow_unverified_ssl=True)
+        self.ts.add(self.provider)
+    
+    
+    def setDatacenter(self, name):
+        self.datacenter = vsphere_datacenter(
+            "dc",
+            name=datacenter)
+        self.ts.add(self.datacenter)
 
 
-def search_file(filename, search_path):
-   """Given a search path, find file
-   """
-   file_found = 0
-   paths = str.split(search_path, pathsep)
-   for path in paths:
-      if exists(join(path, filename)):
-          file_found = 1
-          break
-   if file_found:
-      return normpath(join(path, filename))
-   else:
-      return None
+    def setDatastore(self, name):
+        if not self.datacenter:
+            raise Exception
+        else:
+            self.datastore = vsphere_datastore(
+            "ds",
+            name = name,
+            datacenter_id = self.datacenter.id)
+            self.ts.add(self.datastore)
 
-def createTfData(properties):
-    ts = Terrascript()
+    def setResourcePool(self, name):
+        if not self.datacenter:
+            raise Exception
+        else:
+            self.pool = vsphere_resource_pool(
+            "pool",
+            name = name,
+            datacenter_id=self.datacenter.id)
+            self.ts.add(self.pool)
 
-    esxi_provider = provider(
-        "vsphere",
-        user=properties['esxuser'],
-        password=environ["ESXPASS"],
-        vsphere_server=properties['esxhost'],
-        allow_unverified_ssl=True)
+    def setTemplate(self, name):
+        if not self.datacenter:
+            raise Exception
+        else:
+            self.template = vdata_vsphere_virtual_machine(
+            "template",
+            name=name,
+            datacenter_id=self.datacenter.id)
+            self.ts.add(self.template)
 
-    esx_datacenter = vsphere_datacenter(
-        "dc",
-        name=properties['datacenter'])
+    def addDisk(self, size):
+        idx = len(self.disks)
+        self.disks.append({"label": "disk{}".format(idx+1), "size": size})
 
-    esx_datastore = vsphere_datastore(
-        "ds",
-        name=properties['datastore'],
-        datacenter_id=esx_datacenter.id)
 
-    esx_resource_pool = vsphere_resource_pool(
-        "pool",
-        name=properties['pool'],
-        datacenter_id=esx_datacenter.id)
+    def addNetworkInterface(self, dvp, ipaddr, cidr):
+        if not self.datacenter:
+            raise Exception
+        else:
+            vnet = vsphere_network(
+                dvp,
+                name=dvp,
+                datacenter_id=self.datacenter.id)
+            self.networks.append(vnet)
+            self.ts.add(vnet)
+            self.interfaces.append({"network_id": vnet.id})
+            self.iface_customization.append({"ipv4_address": ipaddr,
+                "ipv4_netmask": cidr})
 
-    esx_template = data_vsphere_virtual_machine(
-        "template",
-        name=properties['template'],
-        datacenter_id=esx_datacenter.id)
+    
+    def setDomain(self, domain):
+        self.domain = domain
+    
 
-    # Handle disks
-    disks = []
-    if properties['disk'] is not None:
-        for idx, size in enumerate(properties['disk']):
-            disks.append({"label": "disk{}".format(idx+1), "size": size})
+    def setTimezone(self, timezone):
+        self.timezone = timezone
 
-    customize = {"linux_options": {
-            "host_name": properties['name'],
-            "domain": properties['domain'],
-            "time_zone": properties['timezone']}
-    }
+    
+    def dumpConfiguration():
+        linuxOptions = {
+            "host_name": name,
+            "domain": self.domain,
+            "time_zone": self.timezone}
 
-    # Handle networks
-    vsphere_networks = []
-    vm_interfaces = []
-    cust_interfaces = []
-    if properties['nic'] is not None:
-        customize["network_interface"] = cust_interfaces
+        customize["linux_options"] = linuxOptions
+        customize["network_interface"] = self.iface_customization
         customize["ipv4_gateway"] = properties['gateway']
         customize["dns_server_list"] = properties['dns']
-        
-        for idx, nic in enumerate(properties['nic']):
-            vnet = vsphere_network(
-                nic,
-                name=nic,
-                datacenter_id=esx_datacenter.id)
 
-            vsphere_networks.append(vnet)
-            vm_interfaces.append({"network_id": vnet.id})
-            iface = {"ipv4_address": properties['ip'][idx],
-                     "ipv4_netmask": properties['cidr'][idx]}
-            cust_interfaces.append(iface)
+        clone = {"template_uuid": self.template.id,
+                "linked_clone": False,
+                "customize": customize}
 
-    clone = {"template_uuid": esx_template.id,
-             "linked_clone": False,
-             "customize": customize}
-
-    vm = vsphere_virtual_machine(
-        'vm',
-        name=properties['name'],
-        resource_pool_id=esx_resource_pool.id,
-        datastore_id=esx_datastore.id,
-        guest_id=properties['guestid'],
-        folder=properties['folder'],
-        num_cpus=properties['cpu'],
-        memory=properties['ram'],
-        network_interface=vm_interfaces,
-        disk=disks,
-        clone=clone)
-
-    ts.add(esxi_provider)
-    ts.add(esx_datacenter)
-    ts.add(esx_datastore)
-    ts.add(esx_template)
-    ts.add(esx_resource_pool)
-    for net in vsphere_networks:
-        ts.add(net)
-    ts.add(vm)
-    return ts.dump()
+        if folder != '':
+            self.virtualMachine = vsphere_virtual_machine(
+                'vm',
+                name=self.name,
+                resource_pool_id=self.pool.id,
+                datastore_id=self.datastore.id,
+                guest_id=self.guestid,
+                folder=self.folder,
+                num_cpus=self.cpu,
+                memory=self.memory,
+                network_interface=self.interfaces,
+                disk=self.disks,
+                clone=clone)
+        else:
+            self.virtualMachine = vsphere_virtual_machine(
+                'vm',
+                name=self.name,
+                resource_pool_id=self.pool.id,
+                datastore_id=self.datastore.id,
+                guest_id=self.guestid,
+                num_cpus=self.cpu,
+                memory=self.memory,
+                network_interface=self.interfaces,
+                disk=self.disks,
+                clone=clone)
+        self.ts.add(self.virtualMachine)
+        return self.ts.dump()
 
 
-def writeDataToFile(filename, data):
-    file = open(filename, mode='w')
-    file.writelines(data)
-    file.close()
+class TerraformVM:
+    def __init__(self, logger = None):
+        if logger: 
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
 
+        find_file = self.__search_file('terraform',environ['PATH'])
+        if not find_file:
+            raise Exception
 
-def isVmExistsInStateFile(tfstateFile, vmName):
-    try:
-        fd = open(tfstateFile, 'r')
-        jsonObject = json.load(fd)
-        fd.close()
-    except FileNotFoundError:
-        return False
-    try:
-        if jsonObject['modules'][0]['resources']['vsphere_virtual_machine.vm']['primary']['attributes']['name'] == vmName:
+        self.terraform = Terraform()
+        self.tfstateFile = 'terraform.tfstate'
+        self.tfstate = None
+        try:
+            fd = open(self.tfstateFile, 'r')
+            self.tfstate = json.load(fd)
+            fd.close()
+        except FileNotFoundError:
+            pass
+
+        self.VmResources = {}
+
+    def __search_file(self, filename, search_path):
+        file_found = 0
+        paths = str.split(search_path, pathsep)
+        for path in paths:
+            if exists(join(path, filename)):
+                file_found = 1
+                break
+        if file_found:
+            self.logger.info("{} found at {}".format(filename, normpath(join(path, filename))))
             return True
-    except KeyError:
-        pass
-    return False
+        else:
+            self.logger.error("{} not found".format(filename))
+            return None
+
+    def addVirtualMachine(self, properties):
+        if properties['nic'] is not None:
+            if (len(properties['nic']) != len(properties['ip'])):
+                self.logger.critical("The number of --ip must be equal to --nic")
+                raise Exception
+
+            if (len(properties['nic']) != len(properties['cidr'])):
+                self.logger.critical("The number of --cidr must be equal to --nic")
+                raise Exception
+
+            for addr in properties['ip']:
+                try:
+                    socket.inet_aton(addr)
+                    # legal
+                except socket.error:
+                    logger.critical("{} is not a valid IP address".format(addr))
+                    raise Exception
+
+        ts = Terrascript()
+
+        esxi_provider = provider(
+            "vsphere",
+            user=properties['esxuser'],
+            password=properties['esxiPassword'],
+            vsphere_server=properties['esxhost'],
+            allow_unverified_ssl=True)
+
+        esx_datacenter = vsphere_datacenter(
+            "dc",
+            name=properties['datacenter'])
+
+        esx_datastore = vsphere_datastore(
+            "ds",
+            name=properties['datastore'],
+            datacenter_id=esx_datacenter.id)
+
+        esx_resource_pool = vsphere_resource_pool(
+            "pool",
+            name=properties['pool'],
+            datacenter_id=esx_datacenter.id)
+
+        esx_template = data_vsphere_virtual_machine(
+            "template",
+            name=properties['template'],
+            datacenter_id=esx_datacenter.id)
+
+        # Handle disks
+        disks = []
+        if properties['disk'] is not None:
+            for idx, size in enumerate(properties['disk']):
+                disks.append({"label": "disk{}".format(idx+1), "size": size})
+
+        customize = {"linux_options": {
+                "host_name": properties['name'],
+                "domain": properties['domain'],
+                "time_zone": properties['timezone']}
+        }
+
+        # Handle networks
+        vsphere_networks = []
+        vm_interfaces = []
+        cust_interfaces = []
+        if properties['nic'] is not None:
+            customize["network_interface"] = cust_interfaces
+            customize["ipv4_gateway"] = properties['gateway']
+            customize["dns_server_list"] = properties['dns']
+            
+            for idx, nic in enumerate(properties['nic']):
+                vnet = vsphere_network(
+                    nic,
+                    name=nic,
+                    datacenter_id=esx_datacenter.id)
+
+                vsphere_networks.append(vnet)
+                vm_interfaces.append({"network_id": vnet.id})
+                iface = {"ipv4_address": properties['ip'][idx],
+                        "ipv4_netmask": properties['cidr'][idx]}
+                cust_interfaces.append(iface)
+
+        clone = {"template_uuid": esx_template.id,
+                "linked_clone": False,
+                "customize": customize}
+
+        vm = vsphere_virtual_machine(
+            'vm',
+            name=properties['name'],
+            resource_pool_id=esx_resource_pool.id,
+            datastore_id=esx_datastore.id,
+            guest_id=properties['guestid'],
+            folder=properties['folder'],
+            num_cpus=properties['cpu'],
+            memory=properties['ram'],
+            network_interface=vm_interfaces,
+            disk=disks,
+            clone=clone)
+
+        ts.add(esxi_provider)
+        ts.add(esx_datacenter)
+        ts.add(esx_datastore)
+        ts.add(esx_template)
+        ts.add(esx_resource_pool)
+        for net in vsphere_networks:
+            ts.add(net)
+        ts.add(vm)
+        self.VmResources[properties['name']] = {
+            "script": "{}.tf.json".format(properties['name']),
+            "properties": properties,
+            "terrascript": ts }
+
+    def createTerraformConfigurationFiles(self, name):
+        self.logger.info("Create Terraform script '{}'".format(self.VmResources[name]['script']))
+        fd = open(self.VmResources[name]['script'],mode="w")
+        fd.writelines(self.VmResources[name]['terrascript'].dump())
+        fd.close()
+
+
+
+
+    def cleanTerraformConfigurationFiles(self, name):
+        self.logger.info("Clean terraform configuration file {}".format(self.VmResources[name]['script']))
+        os.unlink(self.VmResources[name]['script'])
+
+    
+    def isVmExistsInStateFile(self, name):
+        if self.tfstate:
+            try:
+                for module in self.tfstate['modules']:
+                    if module['resources']['vsphere_virtual_machine.vm']['primary']['attributes']['name'] == name:
+                        return True
+            except KeyError:
+                pass
+        return False
+    
+    def tfInit(self):
+        self.logger.info("Init Terraform")
+        return_code, stdout, stderr = self.terraform.init(
+            input=False,
+            no_color=IsFlagged)
+
+
+    def createPlan(self, name):
+        planFile = "{}.plan".format(name)
+        
+        self.logger.info("Create Terraform plan '{}'".format(planFile))
+        return_code, stdout, stderr = self.terraform.plan(
+            out=planFile,
+            input=False,
+            no_color=IsFlagged)
+        
+        self.logger.debug(stdout)
+
+        if return_code == 0:
+            self.logger.warning("Nothing to create. Exit")
+            exit(0)
+    
+        if return_code != 2:
+            self.logger.error("Return Code: {}".format(return_code))
+            self.logger.error(stderr)
+            raise Exception
+        
+        self.VmResources[name]['planfile'] = planFile
+    
+    
+    def deletePlan(self, name):
+        os.unlink(self.VmResources[name]['planfile'])
+        del self.VmResources[name]['planfile']
+
+
+    def applyPlan(self, name):
+        planFile = self.VmResources[name]['planfile']
+        self.logger.info("Apply terraform plan '{}'".format(planFile))
+        return_code, stdout, stderr = self.terraform.apply(
+            planFile,
+            input=False,
+            no_color=IsFlagged)
+        
+        self.logger.debug(stdout)
+
+        if return_code != 0:
+            self.logger.error("Return Code: {}".format(return_code))
+            self.logger.error(stderr)
+            raise Exception
+        self.logger.info("Virtual Machine created")
+
+
+    def destroyResource(self, name):
+        self.logger.info("Destroy terraform Resource")
+        return_code, stdout, stderr = self.terraform.destroy(
+            input=False)
+        self.logger.debug(stdout)
+
+        if return_code != 0:
+            self.logger.error("Return Code: {}".format(return_code))
+            self.logger.error(stderr)
+            raise Exception
+
+
+    def importResource(self, name):
+        self.logger.info("Import Ressource from vSphere")
+        vmProperties = self.VmResources[name]['properties']
+        self.terraform.import_cmd(
+            "vsphere_virtual_machine.vm",
+            "/{}/vm/{}/{}".format(
+                vmProperties['datacenter'],
+                vmProperties['folder'],
+                vmProperties['name']))
+
+  
+    def createVM(self, name):
+        self.createTerraformConfigurationFiles(name)
+        self.tfInit()
+        self.createPlan(name)
+        self.applyPlan(name)
+        self.deletePlan(name)
+        self.cleanTerraformConfigurationFiles(name)
+
+
+    def destroyVM(self,name):
+        self.createTerraformConfigurationFiles(name)
+        self.tfInit()
+        if not self.isVmExistsInStateFile(name):
+            self.importResource(name)
+        self.destroyResource(name)
+        self.cleanTerraformConfigurationFiles(name)
+
+
+
 
 ####################
 # Main program
 ####################
 if __name__ == '__main__':
     formatter = logging.Formatter(
-        '[%(asctime)s] [%(name)-12s] [%(levelname)-8s] %(message)s')
+        '[%(asctime)s] %(levelname)-5s: %(message)s')
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
 
@@ -162,7 +439,7 @@ if __name__ == '__main__':
     args = argparse.ArgumentParser(
         prog='terraform-vm',
         description="Manage vSphere Virtual Machines",
-        epilog="Environment variable ESXPASS is required to connect to vSphere\n/!\ When you want to destroy a VM, tfstate file is not required")
+        epilog="Environment variable ESXPASS is required to connect to vSphere{}/!\ When you want to destroy a VM, tfstate file is not required".format(linesep))
     args.add_argument('--action', choices=['create', 'destroy'],
                       required=True,
                       help='Action to Execute against vSphere')
@@ -221,98 +498,21 @@ if __name__ == '__main__':
                       help='Verbose Output')
 
     arguments = vars(args.parse_args())
-    
     if arguments['debug']:
         logger.setLevel(logging.DEBUG)
-        logger.debug('Switch to DEBUG output')
-
-
-    find_file = search_file('terraform',environ['PATH'])
-    if find_file:
-        logger.info("terraform found at {}".format(find_file))
-    else:
-        logger.error("terraform binary not found")
-        exit(1)
-
-    if arguments['nic'] is not None:
-        if (len(arguments['nic']) != len(arguments['ip'])):
-            logger.critical("The number of --ip must be equal to --nic")
-            raise Exception
-
-        if (len(arguments['nic']) != len(arguments['cidr'])):
-            logger.critical("The number of --cidr must be equal to --nic")
-            raise Exception
-
-        for addr in arguments['ip']:
-            try:
-                socket.inet_aton(addr)
-                # legal
-            except socket.error:
-                logger.critical("{} is not a valid IP address".format(addr))
-                raise Exception
 
     if not ("ESXPASS" in environ):
-        logger.critical("Environment variable ESXPASS must be set")
+        logger.error("Environment variable ESXPASS must be set")
         exit(1)
 
-    jsonFileName = "{}.tf.json".format(arguments['name'])
+    vmProperties = dict(arguments)
+    vmProperties['esxiPassword'] = environ['ESXPASS']
+    del vmProperties['action']
+    del vmProperties['debug']
 
-    logger.info("Create Terraform template")
-    writeDataToFile(jsonFileName,
-                    createTfData(arguments))
-
-    tf = Terraform()
-
-    return_code, stdout, stderr = tf.init(input=False,
-                                          no_color=IsFlagged)
-
+    tvm = TerraformVM(logger)
+    tvm.addVirtualMachine(vmProperties)
     if arguments['action'] == 'create':
-        planFile = "{}.plan".format(arguments['name'])
-
-        logger.info("Create Terraform plan")
-        return_code, stdout, stderr = tf.plan(out=planFile,
-                                              input=False,
-                                              no_color=IsFlagged)
-        
-        logger.debug(stdout)
-
-        if return_code == 0:
-            logger.warning("Nothing to create. Exit")
-            exit(0)
-
-        if return_code != 2:
-            logger.error("Return Code: {}".format(return_code))
-            logger.error(stderr)
-            raise Exception
-
-        logger.info("Apply terraform plan")
-        return_code, stdout, stderr = tf.apply(planFile,
-                                               input=False,
-                                               no_color=IsFlagged)
-        logger.debug(stdout)
-
-        if return_code != 0:
-            logger.error("Return Code: {}".format(return_code))
-            logger.error(stderr)
-            raise Exception
-
+        tvm.createVM(arguments['name'])
     elif arguments['action'] == 'destroy':
-        logger.info("Import Ressource from vSphere")
-        if not isVmExistsInStateFile("terraform.tfstate", arguments['name']):
-            tf.import_cmd(
-                "vsphere_virtual_machine.vm",
-                "/{}/vm/{}/{}".format(
-                    arguments['datacenter'],
-                    arguments['folder'],
-                    arguments['name']))
-
-        logger.info("Destroy terraform Resource")
-        return_code, stdout, stderr = tf.destroy(input=False)
-        logger.debug(stdout)
-
-        if return_code != 2:
-            logger.error("Return Code: {}".format(return_code))
-            logger.error(stderr)
-            raise Exception
-
-    logger.info("End.")
+        tvm.destroyVM(arguments['name'])
