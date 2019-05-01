@@ -107,4 +107,4 @@ venv.bak/
 *.json
 *.plan
 terraform.tfstate*
-.terraform
+.terraform*
