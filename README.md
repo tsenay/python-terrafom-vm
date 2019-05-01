@@ -107,10 +107,12 @@ python setup.py  bdist_wheel
 Upload on PyPi
 
 ```bash
-twine upload --repository-url https://test.pypi.org/legacy/ dist/*
+twine upload --repository-url https://pypi.org/legacy/ dist/*
 ```
 
 ## TODOLIST
 
  - Add 'update' action
- - Manage other infrastructure providers
+ - Add arguments validations
+ - implement proper try/catch 
+ 

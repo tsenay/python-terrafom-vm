@@ -173,12 +173,7 @@ class TerrascriptVSphereVM:
 
 
 class TerraformVM:
-    def __init__(self, logger = None):
-        if logger: 
-            self.logger = logger
-        else:
-            self.logger = logging.getLogger(__name__)
-
+    def __init__(self):
         find_file = self.__search_file('terraform',environ['PATH'])
         if not find_file:
             raise Exception
@@ -195,7 +190,9 @@ class TerraformVM:
 
         self.VmResources = {}
 
+
     def __search_file(self, filename, search_path):
+        logger = logging.getLogger()
         file_found = 0
         paths = str.split(search_path, pathsep)
         for path in paths:
@@ -203,20 +200,22 @@ class TerraformVM:
                 file_found = 1
                 break
         if file_found:
-            self.logger.info("{} found at {}".format(filename, normpath(join(path, filename))))
+            logger.info("{} found at {}".format(filename, normpath(join(path, filename))))
             return True
         else:
-            self.logger.error("{} not found".format(filename))
+            logger.error("{} not found".format(filename))
             return None
 
+
     def addVirtualMachine(self, properties):
+        logger = logging.getLogger()
         if properties['nic'] is not None:
             if (len(properties['nic']) != len(properties['ip'])):
-                self.logger.critical("The number of --ip must be equal to --nic")
+                logger.critical("The number of --ip must be equal to --nic")
                 raise Exception
 
             if (len(properties['nic']) != len(properties['cidr'])):
-                self.logger.critical("The number of --cidr must be equal to --nic")
+                logger.critical("The number of --cidr must be equal to --nic")
                 raise Exception
 
             for addr in properties['ip']:
@@ -264,12 +263,14 @@ class TerraformVM:
 
 
     def createTerraformConfigurationFiles(self, name):
-        self.logger.info("Create Terraform script '{}'".format(self.VmResources[name]['script']))
+        logger = logging.getLogger()
+        logger.info("Create Terraform script '{}'".format(self.VmResources[name]['script']))
         self.VmResources[name]['terrascript'].saveConfiguration(self.VmResources[name]['script'])
 
 
     def cleanTerraformConfigurationFiles(self, name):
-        self.logger.info("Clean terraform configuration file {}".format(self.VmResources[name]['script']))
+        logger = logging.getLogger()
+        logger.info("Clean terraform configuration file {}".format(self.VmResources[name]['script']))
         os.unlink(self.VmResources[name]['script'])
 
     
@@ -283,72 +284,79 @@ class TerraformVM:
                 pass
         return False
     
+
     def tfInit(self):
-        self.logger.info("Init Terraform")
+        logger = logging.getLogger()
+        logger.info("Init Terraform")
         return_code, stdout, stderr = self.terraform.init(
             input=False,
             no_color=IsFlagged)
 
 
     def createPlan(self, name):
+        logger = logging.getLogger()
         planFile = "{}.plan".format(name)
-        
-        self.logger.info("Create Terraform plan '{}'".format(planFile))
+        logger.info("Create Terraform plan '{}'".format(planFile))
         return_code, stdout, stderr = self.terraform.plan(
             out=planFile,
             input=False,
             no_color=IsFlagged)
         
-        self.logger.debug(stdout)
+        logger.debug(stdout)
 
         if return_code == 0:
-            self.logger.warning("Nothing to create. Exit")
+            logger.warning("Nothing to create. Exit")
             exit(0)
     
         if return_code != 2:
-            self.logger.error("Return Code: {}".format(return_code))
-            self.logger.error(stderr)
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
             raise Exception
         
         self.VmResources[name]['planfile'] = planFile
     
     
     def deletePlan(self, name):
+        logger = logging.getLogger()
+        logger.debug("Remove file ''".format(self.VmResources[name]['planfile']))
         os.unlink(self.VmResources[name]['planfile'])
         del self.VmResources[name]['planfile']
 
 
     def applyPlan(self, name):
+        logger = logging.getLogger()
         planFile = self.VmResources[name]['planfile']
-        self.logger.info("Apply terraform plan '{}'".format(planFile))
+        logger.info("Apply terraform plan '{}'".format(planFile))
         return_code, stdout, stderr = self.terraform.apply(
             planFile,
             input=False,
             no_color=IsFlagged)
         
-        self.logger.debug(stdout)
+        logger.debug(stdout)
 
         if return_code != 0:
-            self.logger.error("Return Code: {}".format(return_code))
-            self.logger.error(stderr)
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
             raise Exception
-        self.logger.info("Virtual Machine created")
+        logger.info("Virtual Machine created")
 
 
     def destroyResource(self, name):
-        self.logger.info("Destroy terraform Resource")
+        logger = logging.getLogger()
+        logger.info("Destroy terraform Resource")
         return_code, stdout, stderr = self.terraform.destroy(
             input=False)
-        self.logger.debug(stdout)
+        logger.debug(stdout)
 
         if return_code != 0:
-            self.logger.error("Return Code: {}".format(return_code))
-            self.logger.error(stderr)
+            logger.error("Return Code: {}".format(return_code))
+            logger.error(stderr)
             raise Exception
 
 
     def importResource(self, name):
-        self.logger.info("Import Ressource from vSphere")
+        logger = logging.getLogger
+        logger.info("Import Ressource from vSphere")
         vmProperties = self.VmResources[name]['properties']
         self.terraform.import_cmd(
             "vsphere_virtual_machine.vm",
@@ -377,19 +385,14 @@ class TerraformVM:
 
 
 
+logging.basicConfig(format='[%(asctime)s] %(levelname)-5s: %(message)s',level=logging.INFO)
 
 ####################
 # Main program
 ####################
 if __name__ == '__main__':
-    formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)-5s: %(message)s')
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-
     logger = logging.getLogger(__name__)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+    
 
     args = argparse.ArgumentParser(
         prog='terraform-vm',
@@ -453,8 +456,10 @@ if __name__ == '__main__':
                       help='Verbose Output')
 
     arguments = vars(args.parse_args())
+    
     if arguments['debug']:
         logger.setLevel(logging.DEBUG)
+        logger.debug("DEBUG logging is active")
 
     if not ("ESXPASS" in environ):
         logger.error("Environment variable ESXPASS must be set")
@@ -465,9 +470,11 @@ if __name__ == '__main__':
     del vmProperties['action']
     del vmProperties['debug']
 
-    tvm = TerraformVM(logger)
+    tvm = TerraformVM()
     tvm.addVirtualMachine(vmProperties)
     if arguments['action'] == 'create':
         tvm.createVM(arguments['name'])
     elif arguments['action'] == 'destroy':
         tvm.destroyVM(arguments['name'])
+
+    exit(0)
