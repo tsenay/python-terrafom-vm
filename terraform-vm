@@ -246,7 +246,7 @@ class TerraformVM:
         vm.setTimezone(properties['timezone'])
         vm.setDomain(properties['domain'])
         vm.setGateway(properties['gateway'])
-        for dns in properties[dns]:
+        for dns in properties['dns']:
             vm.addDns(dns)
         
         if properties['disk'] is not None:
