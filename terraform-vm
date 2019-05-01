@@ -33,10 +33,12 @@ class TerrascriptVSphereVM:
         self.datacenter = None
         self.datastore = None
         self.template = None
+        self.gateway = None
         self.disks = []
         self.networks = []
         self.interfaces = []
         self.iface_customization = []
+        self.dns = []
 
     
     def setProvider(self, host, username , password):
@@ -49,40 +51,40 @@ class TerrascriptVSphereVM:
         self.ts.add(self.provider)
     
     
-    def setDatacenter(self, name):
+    def setDatacenter(self, datacenter):
         self.datacenter = vsphere_datacenter(
             "dc",
             name=datacenter)
         self.ts.add(self.datacenter)
 
 
-    def setDatastore(self, name):
+    def setDatastore(self, datastore):
         if not self.datacenter:
             raise Exception
         else:
             self.datastore = vsphere_datastore(
             "ds",
-            name = name,
+            name = datastore,
             datacenter_id = self.datacenter.id)
             self.ts.add(self.datastore)
 
-    def setResourcePool(self, name):
+    def setResourcePool(self, pool):
         if not self.datacenter:
             raise Exception
         else:
             self.pool = vsphere_resource_pool(
             "pool",
-            name = name,
+            name = pool,
             datacenter_id=self.datacenter.id)
             self.ts.add(self.pool)
 
-    def setTemplate(self, name):
+    def setTemplate(self, template):
         if not self.datacenter:
             raise Exception
         else:
-            self.template = vdata_vsphere_virtual_machine(
+            self.template = data_vsphere_virtual_machine(
             "template",
-            name=name,
+            name=template,
             datacenter_id=self.datacenter.id)
             self.ts.add(self.template)
 
@@ -113,23 +115,32 @@ class TerrascriptVSphereVM:
     def setTimezone(self, timezone):
         self.timezone = timezone
 
-    
-    def dumpConfiguration():
-        linuxOptions = {
-            "host_name": name,
-            "domain": self.domain,
-            "time_zone": self.timezone}
 
+    def setGateway(self, gateway):
+        self.gateway = gateway
+
+    def addDns(self, dns):
+        self.dns.append(dns)
+
+
+    def saveConfiguration(self, filename):
+        linuxOptions = {}
+        linuxOptions["host_name"] = self.name
+        linuxOptions["domain"] = self.domain
+        linuxOptions["time_zone"] = self.timezone
+        
+        customize = {}
         customize["linux_options"] = linuxOptions
         customize["network_interface"] = self.iface_customization
-        customize["ipv4_gateway"] = properties['gateway']
-        customize["dns_server_list"] = properties['dns']
+        customize["ipv4_gateway"] = self.gateway
+        customize["dns_server_list"] = self.dns
 
-        clone = {"template_uuid": self.template.id,
-                "linked_clone": False,
-                "customize": customize}
+        clone = {}
+        clone["template_uuid"] = self.template.id
+        clone["linked_clone"] = False
+        clone["customize"] = customize
 
-        if folder != '':
+        if self.folder != '':
             self.virtualMachine = vsphere_virtual_machine(
                 'vm',
                 name=self.name,
@@ -155,7 +166,10 @@ class TerrascriptVSphereVM:
                 disk=self.disks,
                 clone=clone)
         self.ts.add(self.virtualMachine)
-        return self.ts.dump()
+        fd = open(filename,'w')
+        fd.writelines(self.ts.dump())
+        fd.close()
+        return 0
 
 
 class TerraformVM:
@@ -213,104 +227,45 @@ class TerraformVM:
                     logger.critical("{} is not a valid IP address".format(addr))
                     raise Exception
 
-        ts = Terrascript()
-
-        esxi_provider = provider(
-            "vsphere",
-            user=properties['esxuser'],
-            password=properties['esxiPassword'],
-            vsphere_server=properties['esxhost'],
-            allow_unverified_ssl=True)
-
-        esx_datacenter = vsphere_datacenter(
-            "dc",
-            name=properties['datacenter'])
-
-        esx_datastore = vsphere_datastore(
-            "ds",
-            name=properties['datastore'],
-            datacenter_id=esx_datacenter.id)
-
-        esx_resource_pool = vsphere_resource_pool(
-            "pool",
-            name=properties['pool'],
-            datacenter_id=esx_datacenter.id)
-
-        esx_template = data_vsphere_virtual_machine(
-            "template",
-            name=properties['template'],
-            datacenter_id=esx_datacenter.id)
-
-        # Handle disks
-        disks = []
+        vm = TerrascriptVSphereVM(
+            properties['name'],
+            properties['guestid'],
+            properties['cpu'],
+            properties['ram'],
+            properties['folder'])
+        
+        vm.setProvider(
+            properties['esxhost'],
+            properties['esxuser'],
+            properties['esxiPassword'])
+        
+        vm.setDatacenter(properties['datacenter'])
+        vm.setDatastore(properties['datastore'])
+        vm.setResourcePool(properties['pool'])
+        vm.setTemplate(properties['template'])
+        vm.setTimezone(properties['timezone'])
+        vm.setDomain(properties['domain'])
+        vm.setGateway(properties['gateway'])
+        for dns in properties[dns]:
+            vm.addDns(dns)
+        
         if properties['disk'] is not None:
             for idx, size in enumerate(properties['disk']):
-                disks.append({"label": "disk{}".format(idx+1), "size": size})
+                vm.addDisk(size)
 
-        customize = {"linux_options": {
-                "host_name": properties['name'],
-                "domain": properties['domain'],
-                "time_zone": properties['timezone']}
-        }
-
-        # Handle networks
-        vsphere_networks = []
-        vm_interfaces = []
-        cust_interfaces = []
         if properties['nic'] is not None:
-            customize["network_interface"] = cust_interfaces
-            customize["ipv4_gateway"] = properties['gateway']
-            customize["dns_server_list"] = properties['dns']
-            
             for idx, nic in enumerate(properties['nic']):
-                vnet = vsphere_network(
-                    nic,
-                    name=nic,
-                    datacenter_id=esx_datacenter.id)
+                vm.addNetworkInterface(nic, properties['ip'][idx], properties['cidr'][idx])
 
-                vsphere_networks.append(vnet)
-                vm_interfaces.append({"network_id": vnet.id})
-                iface = {"ipv4_address": properties['ip'][idx],
-                        "ipv4_netmask": properties['cidr'][idx]}
-                cust_interfaces.append(iface)
-
-        clone = {"template_uuid": esx_template.id,
-                "linked_clone": False,
-                "customize": customize}
-
-        vm = vsphere_virtual_machine(
-            'vm',
-            name=properties['name'],
-            resource_pool_id=esx_resource_pool.id,
-            datastore_id=esx_datastore.id,
-            guest_id=properties['guestid'],
-            folder=properties['folder'],
-            num_cpus=properties['cpu'],
-            memory=properties['ram'],
-            network_interface=vm_interfaces,
-            disk=disks,
-            clone=clone)
-
-        ts.add(esxi_provider)
-        ts.add(esx_datacenter)
-        ts.add(esx_datastore)
-        ts.add(esx_template)
-        ts.add(esx_resource_pool)
-        for net in vsphere_networks:
-            ts.add(net)
-        ts.add(vm)
         self.VmResources[properties['name']] = {
             "script": "{}.tf.json".format(properties['name']),
             "properties": properties,
-            "terrascript": ts }
+            "terrascript": vm }
+
 
     def createTerraformConfigurationFiles(self, name):
         self.logger.info("Create Terraform script '{}'".format(self.VmResources[name]['script']))
-        fd = open(self.VmResources[name]['script'],mode="w")
-        fd.writelines(self.VmResources[name]['terrascript'].dump())
-        fd.close()
-
-
+        self.VmResources[name]['terrascript'].saveConfiguration(self.VmResources[name]['script'])
 
 
     def cleanTerraformConfigurationFiles(self, name):
