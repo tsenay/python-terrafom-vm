@@ -446,6 +446,9 @@ if __name__ == '__main__':
     args.add_argument('--esxuser', action='store',
                       required=True,
                       help='ESXi Username')
+    args.add_argument('--esxpassvar', action='store',
+                      required=True,
+                      help='ESXi variable that contain password')                      
     args.add_argument('--domain', action='store',
                       required=True,
                       help='DNS domain')
@@ -461,14 +464,12 @@ if __name__ == '__main__':
         logger.setLevel(logging.DEBUG)
         logger.debug("DEBUG logging is active")
 
-    if not ("ESXPASS" in environ):
-        logger.error("Environment variable ESXPASS must be set")
-        exit(1)
-
+    logger.debug(environ)
     vmProperties = dict(arguments)
-    vmProperties['esxiPassword'] = environ['ESXPASS']
+    vmProperties['esxiPassword'] = environ[arguments['esxpassvar']]
     del vmProperties['action']
     del vmProperties['debug']
+    del vmProperties['esxpassvar']
 
     tvm = TerraformVM()
     tvm.addVirtualMachine(vmProperties)

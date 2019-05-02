@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='terraform-vm',
-    version='0.3',
+    version='0.4',
     scripts=['terraform-vm'],
     author="Thomas Senay",
     author_email="tsenay.consulting@icloud.com",
