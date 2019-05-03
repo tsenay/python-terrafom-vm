@@ -419,7 +419,7 @@ if __name__ == '__main__':
     args = argparse.ArgumentParser(
         prog='terraform-vm',
         description="Manage vSphere Virtual Machines",
-        epilog="Environment variable ESXPASS is required to connect to vSphere{}/!\ When you want to destroy a VM, tfstate file is not required".format(linesep))
+        epilog="When you want to destroy a VM, tfstate file is not required".format(linesep))
     args.add_argument('--action', choices=['create', 'destroy'],
                       required=True,
                       help='Action to Execute against vSphere')
@@ -470,7 +470,7 @@ if __name__ == '__main__':
                       help='ESXi Username')
     args.add_argument('--esxpassvar', action='store',
                       required=True,
-                      help='ESXi variable that contain password')                      
+                      help='Environment variable that contain ESXi password')                      
     args.add_argument('--domain', action='store',
                       required=True,
                       help='DNS domain')

@@ -20,27 +20,19 @@ cd python-terraform-vm
 
 ## Usage
 
-### Password Management
-They must be passed as an environment variables.
-
-Required password variable
-
-- ESXPASS
-
 ### Command line
 
 Usage
 
 ```bash
 $ terraform-vm --help
-usage: python-terraform-vm [-h] --action {create,destroy} --datacenter
-                           DATACENTER --datastore DATASTORE --pool POOL
-                           --folder FOLDER --template TEMPLATE --guestid
-                           GUESTID --name NAME [--nic NIC] [--ip IP]
-                           [--cidr CIDR] [--gateway GATEWAY] --cpu CPU --ram
-                           RAM [--disk DISK] [--dns DNS] --esxhost ESXHOST
-                           --esxuser ESXUSER --domain DOMAIN --timezone
-                           TIMEZONE [-debug]
+usage: terraform-vm [-h] --action {create,destroy} --datacenter DATACENTER    
+                    --datastore DATASTORE --pool POOL --folder FOLDER
+                    --template TEMPLATE --guestid GUESTID --name NAME
+                    [--nic NIC] [--ip IP] [--cidr CIDR] [--gateway GATEWAY]   
+                    --cpu CPU --ram RAM [--disk DISK] [--dns DNS] --esxhost
+                    ESXHOST --esxuser ESXUSER --esxpassvar ESXPASSVAR --domain
+                    DOMAIN --timezone TIMEZONE [-debug]
 
 Manage vSphere Virtual Machines
 
@@ -68,24 +60,32 @@ optional arguments:
   --dns DNS             DNS server
   --esxhost ESXHOST     ESXi host
   --esxuser ESXUSER     ESXi Username
+  --esxpassvar ESXPASSVAR
+                        Environment variable that contain ESXi password
   --domain DOMAIN       DNS domain
   --timezone TIMEZONE   TimeZone
   -debug                Verbose Output
 
-Environment variable ESXPASS is required to connect to vSphere /!\ When you
-want to destroy a VM, tfstate file is not required
+When you want to destroy a VM, tfstate file is not required
 ```
 
 ### Examples 
 
 Create a VM
 ```bash
-python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --nic DvP_Nmae --ip 10.0.123.123 --cidr 24 --gateway 10.0.123.1 --cpu 1 --ram 1024 --disk 10 --dns 10.0.123.50 --dns 10.0.123.100 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action create
+python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" \
+--pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --nic DvP_Nmae \
+--ip 10.0.123.123 --cidr 24 --gateway 10.0.123.1 --cpu 1 --ram 1024 --disk 10 --dns 10.0.123.50 \
+--dns 10.0.123.100 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" \
+--domain my.domaon --timezone "Etc/UTC" --esxpassvar ESXPASS --action create
 ```
 
 Destroy a VM
 ```bash
-python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" --pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 --ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" --action destroy
+python-terraform-vm --name terrascript-test --datacenter "DC" --datastore "MyDatastore" \
+--pool "ressource_pool" --template "rhel-7.5-vmw6.0" --guestid "rhel7_64Guest" --cpu 1 \
+--ram 1024 --esxhost esxhost.domain.com --esxuser "esxusername" --folder "terraformed" \
+--esxpassvar ESXPASS --action destroy
 ```
 
 ## Development
@@ -98,19 +98,19 @@ source ./venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-Build wheel package
+## Build
 
 ```bash
-python setup.py  bdist_wheel
+python setup.py sdist bdist_wheel
 ```
 
-Upload on PyPi
+## Upload PyPi
 
 ```bash
-twine upload --repository-url https://pypi.org/legacy/ dist/*
+twine upload dist/*
 ```
 
-## TODOLIST
+# TODOLIST
 
  - Add 'update' action
  - Add arguments validations
